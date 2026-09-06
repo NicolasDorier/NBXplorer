@@ -47,7 +47,7 @@ namespace NBXplorer.Backend
 						continue;
 					IMoney val = output switch
 					{
-						ElementsTxOut { Asset: { AssetId: { } assetId } } el => new AssetMoney(assetId, el.Value),
+						ElementsTxOut { Asset: { AssetId: { } assetId }, Value: { } value } => new AssetMoney(assetId, value),
 						_ => output.Value
 					};
 					outs.Add(new DbConnectionHelper.NewOut(hash, io, output.ScriptPubKey, val));
