@@ -86,6 +86,8 @@ namespace NBXplorer
 
 	public static class RPCClientExtensions
 	{
+		internal static int NextScanRetryDelay(int currentDelay) => Math.Min(currentDelay * 2, 10_000);
+
 		public static async Task<ScanTxoutSetResponse> StartScanTxoutSetExAsync(this RPCClient rpc, ScanTxoutSetParameters parameters, CancellationToken cancellationToken)
 		{
 			int delay = 100;
@@ -97,7 +99,7 @@ namespace NBXplorer
 			catch (RPCException ex) when (!cancellationToken.IsCancellationRequested && ex.Message.StartsWith("Scan already in progress", StringComparison.OrdinalIgnoreCase))
 			{
 				await Task.Delay(delay, cancellationToken);
-				delay = Math.Max(delay * 2, 10_000);
+				delay = NextScanRetryDelay(delay);
 				goto retry;
 			}
 		}
@@ -418,6 +420,9 @@ namespace NBXplorer
 
 		public static async Task<Dictionary<uint256, Transaction>> GetTransactionFromBlocks(this RPCClient rpc, HashSet<(uint256 BlockId, uint256 TransactionId)> txBlockIds, CancellationToken cancellationToken = default)
 		{
+			if (rpc is null || txBlockIds.Count == 0)
+				return new Dictionary<uint256, Transaction>();
+
 			async Task<Dictionary<uint256, Transaction>> GetTransactionFromStoredBlocks(HashSet<(uint256 BlockId, uint256 TransactionId)> txBlockIds)
 			{
 				var result = new Dictionary<uint256, Transaction>();
