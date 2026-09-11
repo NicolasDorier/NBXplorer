@@ -118,7 +118,7 @@ namespace NBXplorer
 			int dec = 1;
 			for (int i = 0; i < divisibility; i++)
 			{
-				dec = dec * 10;
+				dec = checked(dec * 10);
 			}
 			return dec;
 		}
