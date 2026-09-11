@@ -21,6 +21,8 @@ namespace NBXplorer.Controllers
 	[Authorize]
 	public class DerivationSchemesController : Controller
 	{
+		internal const int MaxAddressesPerRequest = 10_000;
+
 		public ScanUTXOSetService ScanUTXOSetService { get; }
 		public MainController MainController { get; }
 		public RepositoryProvider RepositoryProvider { get; }
@@ -53,6 +55,7 @@ namespace NBXplorer.Controllers
 			var network = trackedSourceContext.Network;
 			var trackedSource = trackedSourceContext.TrackedSource;
 			var request = network.ParseJObject<TrackWalletRequest>(rawRequest ?? new JObject());
+			ValidateDerivationOptions(request);
 
 			if (trackedSource is DerivationSchemeTrackedSource dts)
 			{
@@ -80,6 +83,22 @@ namespace NBXplorer.Controllers
 				await RepositoryProvider.GetRepository(network).Track(ats);
 			}
 			return Ok();
+		}
+
+		internal static void ValidateDerivationOptions(TrackWalletRequest request)
+		{
+			foreach (var option in request?.DerivationOptions ?? Array.Empty<TrackDerivationOption>())
+			{
+				if (option.MinAddresses is < 0 || option.MaxAddresses is < 0 ||
+					option.MinAddresses > MaxAddressesPerRequest || option.MaxAddresses > MaxAddressesPerRequest ||
+					option.MinAddresses is int min && option.MaxAddresses is int max && min > max)
+				{
+					throw new NBXplorerError(
+						400,
+						"invalid-address-generation-range",
+						$"Address generation counts must be between 0 and {MaxAddressesPerRequest}, and minAddresses cannot exceed maxAddresses").AsException();
+				}
+			}
 		}
 
 		private GenerateAddressQuery GenerateAddressQuery(TrackWalletRequest request, DerivationFeature feature)
