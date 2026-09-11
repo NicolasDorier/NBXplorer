@@ -94,6 +94,21 @@ namespace NBXplorer.Controllers
 			"getblockhash",
 			"getblockheader"
 		};
+		internal const int MaxRPCBatchSize = 100;
+		internal const int MaxRescanTransactions = 1_000;
+
+		internal static void ValidateRPCBatchSize(int count)
+		{
+			if (count > MaxRPCBatchSize)
+				throw new NBXplorerError(400, "rpc-batch-too-large", $"JSON-RPC batches cannot contain more than {MaxRPCBatchSize} requests").AsException();
+		}
+
+		internal static void ValidateRescanCount(int count)
+		{
+			if (count > MaxRescanTransactions)
+				throw new NBXplorerError(400, "rescan-too-large", $"Rescan requests cannot contain more than {MaxRescanTransactions} transactions").AsException();
+		}
+
 		internal NBXplorerNetwork GetNetwork(string cryptoCode, bool checkRPC)
 		{
 			if (cryptoCode == null)
@@ -137,6 +152,7 @@ namespace NBXplorer.Controllers
 			var req = RPCProxyRequest.TryParse(jsonRPC);
 			if (req is RPCProxyRequest.RPCProxyBatchedRequest batch)
 			{
+				ValidateRPCBatchSize(batch.Requests.Count);
 				var batchRPC = rpc.PrepareBatch();
 				if (batch.Requests.Count is 0)
 					return Json(new JArray());
@@ -717,6 +733,7 @@ namespace NBXplorer.Controllers
 				throw new ArgumentNullException(nameof(rescanRequest));
 			if (rescanRequest?.Transactions == null)
 				throw new NBXplorerException(new NBXplorerError(400, "transactions-missing", "You must specify 'transactions'"));
+			ValidateRescanCount(rescanRequest.Transactions.Count);
 
 			bool willFetchTransactions = rescanRequest.Transactions.Any(t => t.Transaction == null);
 			if (willFetchTransactions && trackedSourceContext.RpcClient is null)
