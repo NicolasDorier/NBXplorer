@@ -187,7 +187,7 @@ namespace NBXplorer.Controllers
 
 			if (request.MinValue != null)
 			{
-				availableCoinsByOutpoint = availableCoinsByOutpoint.Where(c => request.MinValue >= (Money)c.Value.Value).ToDictionary(o => o.Key, o => o.Value);
+				availableCoinsByOutpoint = availableCoinsByOutpoint.Where(c => request.MinValue <= (Money)c.Value.Value).ToDictionary(o => o.Key, o => o.Value);
 			}
 
 			var unconfUtxos = utxos.Where(u => u.Confirmations is 0).ToList();
