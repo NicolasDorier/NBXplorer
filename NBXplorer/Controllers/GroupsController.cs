@@ -83,6 +83,7 @@ namespace NBXplorer.Controllers
 		[HttpPost($"{CommonRoutes.GroupEndpoint}/children/delete")]
 		public async Task<IActionResult> DeleteGroupChildren(string groupId, [FromBody] GroupChild[] children)
 		{
+			EnsureGroupChildren(children);
 			var w = Repository.GetWalletKey(new GroupTrackedSource(groupId));
 			await using (var conn = await ConnectionFactory.CreateConnection())
 			{
@@ -99,6 +100,7 @@ namespace NBXplorer.Controllers
 		[HttpDelete($"{CommonRoutes.GroupEndpoint}/children")]
 		public async Task<IActionResult> AddDeleteGroupChildren(string groupId, [FromBody] GroupChild[] children)
 		{
+			EnsureGroupChildren(children);
 			if (HttpContext.Request.Method == "DELETE")
 				return await DeleteGroupChildren(groupId, children);
 			var w = Repository.GetWalletKey(new GroupTrackedSource(groupId));
@@ -122,6 +124,12 @@ namespace NBXplorer.Controllers
 				}
 			}
 			return await GetGroup(groupId);
+		}
+
+		private static void EnsureGroupChildren(GroupChild[] children)
+		{
+			if (children is null)
+				throw new NBXplorerException(new NBXplorerError(400, "invalid-group-children", "Group children are required"));
 		}
 
 		[HttpPost($"{CommonRoutes.BaseCryptoEndpoint}/{CommonRoutes.GroupEndpoint}/addresses")]
