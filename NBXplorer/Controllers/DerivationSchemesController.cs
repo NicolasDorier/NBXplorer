@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using NBitcoin;
 using NBXplorer.Backend;
 using NBXplorer.DerivationStrategy;
@@ -17,6 +18,7 @@ using NBitcoin.WalletPolicies;
 namespace NBXplorer.Controllers
 {
 	[Route($"v1/{CommonRoutes.BaseDerivationEndpoint}")]
+	[Authorize]
 	public class DerivationSchemesController : Controller
 	{
 		public ScanUTXOSetService ScanUTXOSetService { get; }
@@ -109,6 +111,9 @@ namespace NBXplorer.Controllers
 		[TrackedSourceContext.TrackedSourceContextRequirement(requireRPC: true, allowedTrackedSourceTypes: typeof(DerivationSchemeTrackedSource))]
 		public IActionResult ScanUTXOSet(TrackedSourceContext trackedSourceContext, int? batchSize = null, int? gapLimit = null, int? from = null)
 		{
+			if (batchSize is <= 0 || gapLimit is <= 0 || from is < 0)
+				throw new NBXplorerError(400, "invalid-scan-parameters", "Batch size and gap limit must be positive, and from must be non-negative").AsException();
+
 			var network = trackedSourceContext.Network;
 			var rpc = trackedSourceContext.RpcClient;
 			var derivationScheme = ((DerivationSchemeTrackedSource)trackedSourceContext.TrackedSource).DerivationStrategy;
@@ -145,6 +150,18 @@ namespace NBXplorer.Controllers
 		{
 			request ??= new PruneRequest();
 			request.DaysToKeep ??= 1.0;
+			if (!double.IsFinite(request.DaysToKeep.Value) || request.DaysToKeep.Value < 0.0 || request.DaysToKeep.Value > TimeSpan.MaxValue.TotalDays)
+				throw new NBXplorerError(400, "invalid-days-to-keep", "Days to keep must be a finite, non-negative duration").AsException();
+
+			TimeSpan timeToKeep;
+			try
+			{
+				timeToKeep = TimeSpan.FromDays(request.DaysToKeep.Value);
+			}
+			catch (OverflowException)
+			{
+				throw new NBXplorerError(400, "invalid-days-to-keep", "Days to keep must fit within a TimeSpan").AsException();
+			}
 			var trackedSource = trackedSourceContext.TrackedSource;
 			var network = trackedSourceContext.Network;
 			var repo = trackedSourceContext.Repository;
@@ -153,7 +170,7 @@ namespace NBXplorer.Controllers
 			var state = transactions.ConfirmedState;
 			var prunableIds = new HashSet<uint256>();
 
-			var keepConfMax = network.NBitcoinNetwork.Consensus.GetExpectedBlocksFor(TimeSpan.FromDays(request.DaysToKeep.Value));
+			var keepConfMax = network.NBitcoinNetwork.Consensus.GetExpectedBlocksFor(timeToKeep);
 			var tip = (await repo.GetTip()).Height;
 			// Step 1. We can prune if all UTXOs are spent
 			foreach (var tx in transactions.ConfirmedTransactions)
