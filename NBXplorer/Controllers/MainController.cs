@@ -33,6 +33,25 @@ namespace NBXplorer.Controllers
 	[Authorize]
 	public partial class MainController : Controller
 	{
+		internal const int MaxEventsPerRequest = 10_000;
+		internal const int MaxWebSocketRules = 1_000;
+
+		internal static void ValidateEventLimit(int? limit)
+		{
+			if (limit is < 1 or > MaxEventsPerRequest)
+				throw new NBXplorerError(400, "invalid-limit", $"limit should be between 1 and {MaxEventsPerRequest}").AsException();
+		}
+		internal static int NormalizeEventLimit(int? limit)
+		{
+			ValidateEventLimit(limit);
+			return limit ?? MaxEventsPerRequest;
+		}
+
+		internal static bool CanAppendEventRules(int existingCount, int addedCount)
+		{
+			return existingCount >= 0 && addedCount >= 0 && addedCount <= MaxWebSocketRules - existingCount;
+		}
+
 		public NBXplorerNetworkProvider NetworkProvider { get; }
 		public RPCClientProvider RPCClients { get; }
 		public RepositoryProvider RepositoryProvider { get; }
@@ -482,6 +501,12 @@ namespace NBXplorer.Controllers
 						default:
 							break;
 					}
+					var addedRuleCount = rules.Count - policy.Rules.Length;
+					if (!CanAppendEventRules(policy.Rules.Length, addedRuleCount))
+					{
+						await server.Socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, $"Cannot register more than {MaxWebSocketRules} event rules", cancellation);
+						break;
+					}
 					policy.Rules = rules.ToArray();
 				}
 			}
@@ -502,8 +527,7 @@ namespace NBXplorer.Controllers
 		[Route($"{CommonRoutes.BaseCryptoEndpoint}/events")]
 		public async Task<JArray> GetEvents(string cryptoCode, int lastEventId = 0, int? limit = null, bool longPolling = false, CancellationToken cancellationToken = default)
 		{
-			if (limit != null && limit.Value < 1)
-				throw new NBXplorerError(400, "invalid-limit", "limit should be more than 0").AsException();
+			limit = NormalizeEventLimit(limit);
 			var network = GetNetwork(cryptoCode, false);
 			TaskCompletionSource<bool> waitNextEvent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 			Action<NewEventBase> maySetNextEvent = (NewEventBase ev) =>
@@ -538,8 +562,7 @@ namespace NBXplorer.Controllers
 		[Route($"{CommonRoutes.BaseCryptoEndpoint}/events/latest")]
 		public async Task<JArray> GetLatestEvents(string cryptoCode, int limit = 10)
 		{
-			if (limit < 1)
-				throw new NBXplorerError(400, "invalid-limit", "limit should be more than 0").AsException();
+			ValidateEventLimit(limit);
 			var network = GetNetwork(cryptoCode, false);
 			var repo = RepositoryProvider.GetRepository(network);
 			var result = await repo.GetLatestEvents(limit);
