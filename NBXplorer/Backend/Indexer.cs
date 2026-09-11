@@ -184,18 +184,17 @@ namespace NBXplorer.Backend
 									// If there is a fork, we should index the unordered blocks
 									bool unconfedBlocks = false;
 									bool fork = await RPCClient.GetBlockHeaderAsyncEx(lastIndexedBlock.Hash, token) == null;
-									foreach (var b in Enumerable.Zip(unorderedBlocks, slimChainedBlocks)
-													.Where(b => fork || b.Second.Height > lastIndexedBlock.Height)
-													.OrderBy(b => b.Second.Height)
+									foreach (var b in MatchBlocksToHeaders(unorderedBlocks, slimChainedBlocks)
+													.Where(b => fork || b.Header.Height > lastIndexedBlock.Height)
 													.ToList())
 									{
-										var slimBlock = b.Second;
+										var slimBlock = b.Header;
 										if (fork && !unconfedBlocks)
 										{
 											await conn.MakeOrphanFrom(slimBlock.Height);
 											unconfedBlocks = true;
 										}
-										await SaveMatches(conn, b.First, slimBlock.ToSlimChainedBlock());
+										await SaveMatches(conn, b.Block, slimBlock.ToSlimChainedBlock());
 									}
 								}
 								break;
@@ -213,6 +212,17 @@ namespace NBXplorer.Backend
 					await SaveMatches(conn, txs, null, true);
 				}
 			}
+		}
+
+		internal static IEnumerable<(Block Block, RPCBlockHeader Header)> MatchBlocksToHeaders(IEnumerable<Block> blocks, BlockHeaders headers)
+		{
+			var matches = new List<(Block Block, RPCBlockHeader Header)>();
+			foreach (var block in blocks)
+			{
+				if (headers.ByHashes.TryGetValue(block.GetHash(), out var header))
+					matches.Add((block, header));
+			}
+			return matches.OrderBy(match => match.Header.Height);
 		}
 
 		// Attempt to pull as much non-conflicting transactions as possible in one batch
